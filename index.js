@@ -17,7 +17,7 @@ const tronWeb = new TronWeb({
   fullHost: 'https://nile.trongrid.io',
   privateKey: process.env.BOT_PRIVATE_KEY,
 });
-const usdtContractAddress = 'TR7NHqjeKQxGTCi8q8ZY4pL8otS7GYSdiH'; // USDT TRC-20 (same on Testnet)
+const usdtContractAddress = 'TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj'; // USDT TRC-20 (same on Testnet)
 const botAddress = tronWeb.address.fromPrivateKey(process.env.BOT_PRIVATE_KEY);
 
 // Environment Variables
@@ -78,24 +78,21 @@ bot.onText(/\/status/, (msg) => {
 
 // Monitor USDT Transactions
 async function monitorTransactions() {
-  const contract = await tronWeb.contract().at(usdtContractAddress);
-  contract.Transfer().watch((err, event) => {
-    if (err) return console.error(err);
-    if (event.to === botAddress) {
-      const amount = event.value / 1e6; // USDT has 6 decimals
-      db.get('SELECT * FROM entries WHERE tronAddress = ?', [event.from], (err, entry) => {
-        if (entry) {
-          db.run('UPDATE entries SET amount = amount + ? WHERE tronAddress = ?', [amount, event.from]);
-          bot.sendMessage(entry.chatId, `${entry.telegramId} sent ${amount} USDT! Entry confirmed.`);
-        }
-      });
-    }
-  });
+  try {
+    const contract = await tronWeb.contract().at(usdtContractAddress);
+    contract.Transfer().watch((err, event) => {
+      if (err) return console.error('Transfer watch error:', err);
+      if (event.to === botAddress) {
+        const amount = event.value / 1e6;
+        db.get('SELECT * FROM entries WHERE tronAddress = ?', [event.from], (err, entry) => {
+          if (entry) {
+            db.run('UPDATE entries SET amount = amount + ? WHERE tronAddress = ?', [amount, event.from]);
+            bot.sendMessage(entry.chatId, `${entry.telegramId} sent ${amount} USDT! Entry confirmed.`);
+          }
+        });
+      }
+    });
+  } catch (error) {
+    console.error('Failed to initialize contract:', error.message);
+  }
 }
-
-monitorTransactions();
-
-// Start server
-app.listen(port, () => {
-  console.log(`Bot running on port ${port}`);
-});
