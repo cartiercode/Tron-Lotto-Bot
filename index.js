@@ -8,7 +8,7 @@ const port = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Tron Lottery Bot is running!'));
 
 // Telegram Bot Setup
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || '7576811445:AAFMwQXlhLUCpSzEu-FNTeawdE7hVWZbf0g';
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN || 'YOUR_BOTFATHER_TOKEN_HERE';
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
 // Database for raffle settings and entries
