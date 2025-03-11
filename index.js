@@ -19,7 +19,7 @@ const db = new sqlite3.Database('./lottery.db', (err) => {
 });
 
 // Admin Telegram ID (replace with yours later)
-const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || '846800944';
+const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || 'YOUR_TELEGRAM_ID';
 
 // Commands
 bot.onText(/\/start/, (msg) => {
