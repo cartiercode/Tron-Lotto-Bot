@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: tron-lottery-bot
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TELEGRAM_TOKEN
+        fromService: input
+      - key: BOT_PRIVATE_KEY
+        fromService: input
+      - key: ADMIN_WALLET
+        fromService: input
+      - key: HOST_WALLET
+        fromService: input
+      - key: ADMIN_TELEGRAM_ID
+        fromService: input
