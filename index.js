@@ -1,9 +1,12 @@
+console.log('Starting bot...');
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const TronWeb = require('tronweb');
 
-// Express setup - Start the server FIRST
+console.log('Dependencies loaded.');
+
+// Express setup
 const app = express();
 const port = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Tron Lottery Bot is running!'));
@@ -13,14 +16,16 @@ app.listen(port, () => {
 
 // Telegram Bot Setup
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+console.log('Initializing Telegram bot...');
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+console.log('Telegram bot initialized.');
 
 // Tron Setup (Nile Testnet)
 const tronWeb = new TronWeb({
   fullHost: 'https://nile.trongrid.io',
   privateKey: process.env.BOT_PRIVATE_KEY,
 });
-const usdtContractAddress = 'TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj'; // Nile Testnet USDT
+const usdtContractAddress = 'TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj';
 let botAddress;
 try {
   botAddress = tronWeb.address.fromPrivateKey(process.env.BOT_PRIVATE_KEY);
@@ -35,12 +40,14 @@ const ADMIN_WALLET = process.env.ADMIN_WALLET || botAddress;
 const ENTRY_FEE = 1;
 
 // Database
+console.log('Setting up database...');
 const db = new sqlite3.Database('./lottery.db', (err) => {
   if (err) {
     console.error('SQLite Error:', err.message);
   } else {
     db.run('CREATE TABLE IF NOT EXISTS raffles (chatId TEXT PRIMARY KEY, entryFee REAL DEFAULT 1, hostSplit REAL DEFAULT 40, duration INTEGER DEFAULT 24, hostWallet TEXT, startTime INTEGER)');
     db.run('CREATE TABLE IF NOT EXISTS entries (chatId TEXT, telegramId TEXT, tronAddress TEXT, amount REAL, FOREIGN KEY(chatId) REFERENCES raffles(chatId))');
+    console.log('Database tables created.');
   }
 });
 
@@ -88,25 +95,39 @@ bot.onText(/\/status/, (msg) => {
   });
 });
 
-// Monitor Transactions - Run async without blocking startup
+// Monitor Transactions
 async function monitorTransactions() {
   try {
+    console.log('Starting transaction monitoring...');
     const contract = await tronWeb.contract().at(usdtContractAddress);
-    contract.Transfer().watch((err, event) => {
-      if (err) return console.error('Transfer watch error:', err);
-      if (event.to === botAddress) {
-        const amount = event.value / 1e6;
-        db.get('SELECT * FROM entries WHERE tronAddress = ?', [event.from], (err, entry) => {
-          if (entry) {
-            db.run('UPDATE entries SET amount = amount + ? WHERE tronAddress = ?', [amount, event.from]);
-            bot.sendMessage(entry.chatId, `${entry.telegramId} sent ${amount} USDT! Entry confirmed.`);
+    console.log('Contract initialized, polling for transfers...');
+    setInterval(async () => {
+      try {
+        const events = await contract.Transfer().get({ fromBlock: 'latest' });
+        events.forEach(event => {
+          console.log('Transfer event:', event);
+          if (event.to === botAddress) {
+            const amount = event.value / 1e6;
+            console.log(`Detected ${amount} USDT from ${event.from} to ${botAddress}`);
+            db.get('SELECT * FROM entries WHERE tronAddress = ?', [event.from], (err, entry) => {
+              if (err) console.error('Database query error:', err);
+              if (entry) {
+                db.run('UPDATE entries SET amount = amount + ? WHERE tronAddress = ?', [amount, event.from], (err) => {
+                  if (err) console.error('Database update error:', err);
+                  else bot.sendMessage(entry.chatId, `${entry.telegramId} sent ${amount} USDT! Entry confirmed.`);
+                });
+              }
+            });
           }
         });
+      } catch (err) {
+        console.error('Polling error:', err);
       }
-    });
+    }, 30000);
   } catch (error) {
     console.error('Failed to initialize contract:', error.message);
   }
 }
 
-monitorTransactions(); // Call without awaiting
+monitorTransactions();
+console.log('Bot startup complete.');
