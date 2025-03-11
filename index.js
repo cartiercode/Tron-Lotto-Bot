@@ -3,10 +3,13 @@ const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const TronWeb = require('tronweb');
 
-// Express setup for Render
+// Express setup - Start the server FIRST
 const app = express();
 const port = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Tron Lottery Bot is running!'));
+app.listen(port, () => {
+  console.log(`Server listening on port ${port}`);
+});
 
 // Telegram Bot Setup
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
@@ -17,19 +20,28 @@ const tronWeb = new TronWeb({
   fullHost: 'https://nile.trongrid.io',
   privateKey: process.env.BOT_PRIVATE_KEY,
 });
-const usdtContractAddress = 'TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj'; // USDT TRC-20 (same on Testnet)
-const botAddress = tronWeb.address.fromPrivateKey(process.env.BOT_PRIVATE_KEY);
+const usdtContractAddress = 'TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj'; // Nile Testnet USDT
+let botAddress;
+try {
+  botAddress = tronWeb.address.fromPrivateKey(process.env.BOT_PRIVATE_KEY);
+  console.log(`Bot address initialized: ${botAddress}`);
+} catch (error) {
+  console.error('Failed to initialize bot address:', error.message);
+}
 
 // Environment Variables
 const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID;
-const ADMIN_WALLET = process.env.ADMIN_WALLET || botAddress; // Default to bot wallet for now
-const ENTRY_FEE = 1; // Default, overridden by /setup
+const ADMIN_WALLET = process.env.ADMIN_WALLET || botAddress;
+const ENTRY_FEE = 1;
 
 // Database
 const db = new sqlite3.Database('./lottery.db', (err) => {
-  if (err) console.error(err);
-  db.run('CREATE TABLE IF NOT EXISTS raffles (chatId TEXT PRIMARY KEY, entryFee REAL DEFAULT 1, hostSplit REAL DEFAULT 40, duration INTEGER DEFAULT 24, hostWallet TEXT, startTime INTEGER)');
-  db.run('CREATE TABLE IF NOT EXISTS entries (chatId TEXT, telegramId TEXT, tronAddress TEXT, amount REAL, FOREIGN KEY(chatId) REFERENCES raffles(chatId))');
+  if (err) {
+    console.error('SQLite Error:', err.message);
+  } else {
+    db.run('CREATE TABLE IF NOT EXISTS raffles (chatId TEXT PRIMARY KEY, entryFee REAL DEFAULT 1, hostSplit REAL DEFAULT 40, duration INTEGER DEFAULT 24, hostWallet TEXT, startTime INTEGER)');
+    db.run('CREATE TABLE IF NOT EXISTS entries (chatId TEXT, telegramId TEXT, tronAddress TEXT, amount REAL, FOREIGN KEY(chatId) REFERENCES raffles(chatId))');
+  }
 });
 
 // Commands
@@ -42,8 +54,8 @@ bot.onText(/\/setup(?:\s+(\d+\.?\d*))?(?:\s+(\d+\.?\d*))?(?:\s+(\d+))?(?:\s+([T]
   const entryFee = match[1] ? parseFloat(match[1]) : ENTRY_FEE;
   const hostSplit = match[2] ? parseFloat(match[2]) : 40;
   const duration = match[3] ? parseInt(match[3]) : 24;
-  const hostWallet = match[4] || botAddress; // Default to bot wallet if not provided
-  const startTime = Math.floor(Date.now() / 1000); // UTC timestamp in seconds
+  const hostWallet = match[4] || botAddress;
+  const startTime = Math.floor(Date.now() / 1000);
 
   if (hostSplit >= 90) return bot.sendMessage(chatId, 'Host split must be less than 90% (admin gets 10%).');
 
@@ -76,7 +88,7 @@ bot.onText(/\/status/, (msg) => {
   });
 });
 
-// Monitor USDT Transactions
+// Monitor Transactions - Run async without blocking startup
 async function monitorTransactions() {
   try {
     const contract = await tronWeb.contract().at(usdtContractAddress);
@@ -96,3 +108,5 @@ async function monitorTransactions() {
     console.error('Failed to initialize contract:', error.message);
   }
 }
+
+monitorTransactions(); // Call without awaiting
